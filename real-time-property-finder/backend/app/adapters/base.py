@@ -113,7 +113,18 @@ class GenericExtractionMixin:
         locality = ex.extract_locality(title, description)
         address = ex.extract_address_from_json_ld(json_ld) or locality
 
-        rent = ex.extract_rent(text)
+        # Rent and property type are single-value fields being asked of a
+        # page that may actually be a locality/category hub listing many
+        # properties at once (common for these portals). The page's own
+        # subject text is checked first, since it almost always describes
+        # one specific thing; the noisier full body is only a fallback,
+        # and for rent specifically a fallback match is discarded rather
+        # than guessed if the body contains several different figures
+        # (price-tier facet links, "similar properties" prices, etc.) -
+        # see extract_rent's docstring.
+        rent = ex.extract_rent(subject_text) or ex.extract_rent(text)
+        property_type = ex.detect_property_type(subject_text) or ex.detect_property_type(text)
+
         bhk = ex.extract_bhk(text)
         size_sqft = ex.extract_size_sqft(text)
         deposit = ex.extract_deposit(text)
@@ -126,7 +137,6 @@ class GenericExtractionMixin:
         owner_or_agent = ex.detect_owner_or_agent(text)
         brokerage = ex.detect_brokerage(text)
         food_preference = ex.detect_food_preference(text)
-        property_type = ex.detect_property_type(text)
 
         known_fields = [
             rent, bhk, size_sqft, deposit, furnishing, parking, lift, water,

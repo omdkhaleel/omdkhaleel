@@ -34,13 +34,14 @@ if not logger.handlers:
     logger.propagate = False
 
 
-def log_search_start(search_id: str, area: str, min_rent, max_rent, bhk: str) -> None:
+def log_search_start(search_id: str, area: str, min_rent, max_rent, bhk: str, property_type: str = "any") -> None:
     logger.info("")
     logger.info("SEARCH START [%s]", search_id)
     logger.info("Area: %s", area)
     if min_rent is not None or max_rent is not None:
         logger.info("Rent: %s-%s", min_rent if min_rent is not None else "any", max_rent if max_rent is not None else "any")
     logger.info("BHK: %s", bhk)
+    logger.info("Property type: %s", property_type)
 
 
 def log_query_count(count: int) -> None:

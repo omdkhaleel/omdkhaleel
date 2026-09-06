@@ -62,7 +62,7 @@ class SearchOrchestrator:
     async def run(self, req: SearchRequest) -> SearchResponse:
         search_id = str(uuid.uuid4())
         searched_at = datetime.now(timezone.utc).isoformat()
-        log_search_start(search_id, req.area, req.min_rent, req.max_rent, req.bhk.value)
+        log_search_start(search_id, req.area, req.min_rent, req.max_rent, req.bhk.value, req.property_type.value)
 
         queries = generate_queries(req, max_queries=config.MAX_QUERIES_PER_SEARCH)
         log_query_count(len(queries))

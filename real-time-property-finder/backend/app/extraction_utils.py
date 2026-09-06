@@ -71,12 +71,23 @@ def visible_text(soup: BeautifulSoup) -> str:
 
 
 def extract_rent(text: str) -> Optional[int]:
-    match = _RENT_RANGE_RE.search(text)
-    if match:
-        return _to_int(match.group(1))
-    match = _PLAIN_RUPEE_RE.search(text)
-    if match:
-        return _to_int(match.group(1))
+    """Returns the rent only when the text points at exactly one figure.
+
+    A portal locality/category page (listing many properties, or showing
+    price-tier facet links like "under 20000", "under 30000") often
+    contains several different rent-like numbers with nothing tying any
+    one of them to a specific property. Picking the first one would be a
+    guess, and per spec an ambiguous rent must not be treated as a
+    confident value (and must never cause a hard-filter exclusion) - so
+    multiple distinct figures resolve to "not verified" (None) rather
+    than an arbitrary pick.
+    """
+    candidates = [_to_int(m.group(1)) for m in _RENT_RANGE_RE.finditer(text)]
+    candidates += [_to_int(m.group(1)) for m in _PLAIN_RUPEE_RE.finditer(text)]
+    candidates = [c for c in candidates if c]
+    distinct = set(candidates)
+    if len(distinct) == 1:
+        return candidates[0]
     return None
 
 

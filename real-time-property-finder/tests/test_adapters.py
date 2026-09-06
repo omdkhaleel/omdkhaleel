@@ -50,6 +50,26 @@ REAL_LISTING_WITH_UNRELATED_NAV_HTML = """
 </html>
 """
 
+# Reproduces the exact bug found from a real user's search_debug.log: a
+# genuine flats-for-rent page whose own title/description clearly say
+# "apartment"/"flats" and one specific price, but whose body also carries
+# sibling category nav links ("Independent House for Rent") and price-tier
+# facet chips ("under 20000", "under 30000") - unrelated to this listing,
+# but enough to make a naive full-page scan misclassify the property type
+# or pick a wrong/ambiguous rent.
+HUB_PAGE_WITH_CONTAMINATED_BODY_HTML = """
+<html><head>
+  <title>2 BHK Flats for Rent in Teynampet, Chennai for Rs 18000</title>
+  <meta property="og:description" content="2 BHK apartment for rent in Teynampet, Chennai." />
+</head>
+<body>
+  <nav>Independent House for Rent | Flats for Rent | Commercial Property</nav>
+  <div class="price-facets">Under 20000 | Under 30000 | Under 45000</div>
+  <p>Rent: 18000. Deposit: 90000. Size: 850 sqft. Owner listed, no brokerage.</p>
+</body>
+</html>
+"""
+
 
 def test_housing_adapter_extracts_known_fields():
     adapter = HousingAdapter()
@@ -93,6 +113,19 @@ def test_real_listing_not_excluded_by_unrelated_nav_mentioning_pg():
     assert record is not None
     assert record.monthly_rent == 27000
     assert record.bhk == "2"
+
+
+def test_property_type_not_corrupted_by_unrelated_sibling_category_nav():
+    """Regression test for a real bug: pages were excluded as "property
+    type does not match" because sibling nav links ("Independent House
+    for Rent") elsewhere on a flats-for-rent page were scanned along with
+    the page's own content, and "independent house" matched before
+    "apartment" ever got a chance to."""
+    adapter = HousingAdapter()
+    record = adapter.extract("https://housing.com/listing/hub-1", HUB_PAGE_WITH_CONTAMINATED_BODY_HTML)
+    assert record is not None
+    assert record.property_type == "apartment"
+    assert record.monthly_rent == 18000
 
 
 def test_blocked_page_is_not_extracted():
