@@ -71,12 +71,23 @@ def visible_text(soup: BeautifulSoup) -> str:
 
 
 def extract_rent(text: str) -> Optional[int]:
-    match = _RENT_RANGE_RE.search(text)
-    if match:
-        return _to_int(match.group(1))
-    match = _PLAIN_RUPEE_RE.search(text)
-    if match:
-        return _to_int(match.group(1))
+    """Returns the rent only when the text points at exactly one figure.
+
+    A portal locality/category page (listing many properties, or showing
+    price-tier facet links like "under 20000", "under 30000") often
+    contains several different rent-like numbers with nothing tying any
+    one of them to a specific property. Picking the first one would be a
+    guess, and per spec an ambiguous rent must not be treated as a
+    confident value (and must never cause a hard-filter exclusion) - so
+    multiple distinct figures resolve to "not verified" (None) rather
+    than an arbitrary pick.
+    """
+    candidates = [_to_int(m.group(1)) for m in _RENT_RANGE_RE.finditer(text)]
+    candidates += [_to_int(m.group(1)) for m in _PLAIN_RUPEE_RE.finditer(text)]
+    candidates = [c for c in candidates if c]
+    distinct = set(candidates)
+    if len(distinct) == 1:
+        return candidates[0]
     return None
 
 
@@ -201,7 +212,11 @@ def detect_property_type(text: str) -> Optional[str]:
 
 def is_pg_or_shared(text: str) -> bool:
     lowered = text.lower()
-    keywords = ["paying guest", " pg ", "pg for", "hostel", "shared room", "shared accommodation"]
+    # Deliberately no bare "pg" token: a two-letter abbreviation is too
+    # likely to appear in unrelated portal cross-sell text ("Flats, PG,
+    # Commercial for rent in ...") even within a title/description, so
+    # only unambiguous multi-word phrases are treated as PG signals.
+    keywords = ["paying guest", "pg for boys", "pg for girls", "pg accommodation", "hostel", "shared room", "shared accommodation"]
     if any(k in f" {lowered} " for k in keywords):
         if "co-living" in lowered and "private" in lowered and "shared" not in lowered:
             return False

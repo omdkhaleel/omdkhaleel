@@ -22,12 +22,52 @@ SAMPLE_HTML = """
 """
 
 PG_HTML = """
-<html><head><title>PG for rent in Adyar</title></head>
+<html><head><title>Paying Guest Accommodation for Rent in Adyar</title>
+<meta property="og:description" content="Paying guest accommodation with shared room, rent 8000 per month." />
+</head>
 <body><p>Paying guest accommodation, shared room, rent 8000 per month.</p></body></html>
 """
 
 BLOCKED_HTML = """
 <html><body><h1>Access Denied</h1><p>Please complete the CAPTCHA to continue.</p></body></html>
+"""
+
+# A genuine apartment listing whose own title/description are perfectly
+# normal, but whose page also carries the kind of unrelated cross-sell
+# navigation ("PG in Adyar", "Commercial Property") that real Indian
+# property portals stuff onto nearly every listing page. This must NOT
+# be excluded - only the page's own declared subject should count.
+REAL_LISTING_WITH_UNRELATED_NAV_HTML = """
+<html><head>
+  <title>2 BHK Apartment for Rent in Adyar, Chennai for Rs 27000</title>
+  <meta property="og:description" content="2 BHK apartment for rent in Adyar, Chennai. Owner property, no brokerage." />
+</head>
+<body>
+  <nav>Browse: Flats for Rent | PG in Adyar | Commercial Property | Roommates near Adyar</nav>
+  <p>Rent: 27000. Deposit: 100000. Size: 900 sqft. Covered parking available. Owner listed, no brokerage.</p>
+  <div class="related-searches">Related: PG in Adyar, Hostel in Adyar, Commercial Property in Chennai</div>
+</body>
+</html>
+"""
+
+# Reproduces the exact bug found from a real user's search_debug.log: a
+# genuine flats-for-rent page whose own title/description clearly say
+# "apartment"/"flats" and one specific price, but whose body also carries
+# sibling category nav links ("Independent House for Rent") and price-tier
+# facet chips ("under 20000", "under 30000") - unrelated to this listing,
+# but enough to make a naive full-page scan misclassify the property type
+# or pick a wrong/ambiguous rent.
+HUB_PAGE_WITH_CONTAMINATED_BODY_HTML = """
+<html><head>
+  <title>2 BHK Flats for Rent in Teynampet, Chennai for Rs 18000</title>
+  <meta property="og:description" content="2 BHK apartment for rent in Teynampet, Chennai." />
+</head>
+<body>
+  <nav>Independent House for Rent | Flats for Rent | Commercial Property</nav>
+  <div class="price-facets">Under 20000 | Under 30000 | Under 45000</div>
+  <p>Rent: 18000. Deposit: 90000. Size: 850 sqft. Owner listed, no brokerage.</p>
+</body>
+</html>
 """
 
 
@@ -62,6 +102,30 @@ def test_pg_listing_is_excluded():
     adapter = HousingAdapter()
     record = adapter.extract("https://housing.com/pg/1", PG_HTML)
     assert record is None
+
+
+def test_real_listing_not_excluded_by_unrelated_nav_mentioning_pg():
+    """Regression test for a real bug: a genuine 2 BHK listing was being
+    dropped as "PG/shared" purely because unrelated nav/related-searches
+    links elsewhere on the page mentioned PG and Commercial Property."""
+    adapter = HousingAdapter()
+    record = adapter.extract("https://housing.com/listing/real-1", REAL_LISTING_WITH_UNRELATED_NAV_HTML)
+    assert record is not None
+    assert record.monthly_rent == 27000
+    assert record.bhk == "2"
+
+
+def test_property_type_not_corrupted_by_unrelated_sibling_category_nav():
+    """Regression test for a real bug: pages were excluded as "property
+    type does not match" because sibling nav links ("Independent House
+    for Rent") elsewhere on a flats-for-rent page were scanned along with
+    the page's own content, and "independent house" matched before
+    "apartment" ever got a chance to."""
+    adapter = HousingAdapter()
+    record = adapter.extract("https://housing.com/listing/hub-1", HUB_PAGE_WITH_CONTAMINATED_BODY_HTML)
+    assert record is not None
+    assert record.property_type == "apartment"
+    assert record.monthly_rent == 18000
 
 
 def test_blocked_page_is_not_extracted():

@@ -9,8 +9,10 @@ per spec, ambiguous/unverifiable data must not silently disappear from a
 from __future__ import annotations
 
 import re
-from typing import List, Tuple
+from collections import Counter
+from typing import Dict, List, Tuple
 
+from .logging_config import logger
 from .models import BHK, LiftPreference, PropertyType, AvailabilityStatus, PropertyRecord, SearchRequest, WaterPreference
 
 _STOPWORDS = {"the", "a", "an", "of", "in", "near", "at", "for", "rent", "chennai", "bangalore", "bengaluru", "hyderabad", "mumbai", "pune", "delhi"}
@@ -103,8 +105,25 @@ def passes_hard_filters(record: PropertyRecord, req: SearchRequest) -> Tuple[boo
 
 def filter_candidates(records: List[PropertyRecord], req: SearchRequest) -> List[PropertyRecord]:
     kept = []
+    reason_counts: Counter = Counter()
+    examples: Dict[str, List[str]] = {}
     for record in records:
-        ok, _reason = passes_hard_filters(record, req)
+        ok, reason = passes_hard_filters(record, req)
         if ok:
             kept.append(record)
+        else:
+            reason_counts[reason] += 1
+            bucket = examples.setdefault(reason, [])
+            if len(bucket) < 3:
+                bucket.append(record.listing_url)
+
+    if reason_counts:
+        logger.info(
+            "Hard filter rejected %d of %d candidates:",
+            sum(reason_counts.values()),
+            len(records),
+        )
+        for reason, count in reason_counts.most_common():
+            logger.info("  %d x %r, e.g. %s", count, reason, "; ".join(examples[reason]))
+
     return kept
