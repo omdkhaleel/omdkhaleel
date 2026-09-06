@@ -10,8 +10,8 @@ anything.
 from __future__ import annotations
 
 import asyncio
-from typing import List
-from urllib.parse import urlencode
+from typing import List, Optional
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -22,6 +22,28 @@ from .base import SearchHit, SearchProvider
 
 _ENDPOINT = "https://html.duckduckgo.com/html/"
 _MIN_DELAY_SECONDS = 0.6
+
+
+def _resolve_result_url(href: str) -> Optional[str]:
+    """DuckDuckGo's HTML results page never hands back the target URL
+    directly — every result link is a same-site redirect of the form
+    ``//duckduckgo.com/l/?uddg=<url-encoded target>&rut=...``. Unwrap that
+    so the pipeline gets the real listing/portal URL instead of a
+    DuckDuckGo link it can never fetch a property page from.
+    """
+    if not href:
+        return None
+    if href.startswith("//"):
+        href = "https:" + href
+    parsed = urlparse(href)
+    if parsed.netloc.endswith("duckduckgo.com"):
+        if parsed.path.startswith("/l/"):
+            target = parse_qs(parsed.query).get("uddg", [None])[0]
+            return unquote(target) if target else None
+        # Any other duckduckgo.com link (ad tracking, internal nav, etc.)
+        # is DDG's own chrome, never an actual result.
+        return None
+    return href
 
 
 class DuckDuckGoProvider(SearchProvider):
@@ -48,12 +70,21 @@ class DuckDuckGoProvider(SearchProvider):
         async with self._semaphore:
             for attempt in range(1, attempts + 1):
                 try:
-                    async with httpx.AsyncClient(timeout=config.REQUEST_TIMEOUT_SECONDS) as client:
+                    async with httpx.AsyncClient(
+                        timeout=config.REQUEST_TIMEOUT_SECONDS, follow_redirects=True
+                    ) as client:
                         response = await client.get(
                             f"{_ENDPOINT}?{urlencode(params)}", headers=headers
                         )
                     if response.status_code == 200:
-                        return self._parse(response.text, num_results)
+                        hits = self._parse(response.text, num_results)
+                        if not hits:
+                            logger.info(
+                                "DuckDuckGo returned 200 but no parseable results for query %r "
+                                "(page may be a bot-check interstitial or markup has changed)",
+                                query,
+                            )
+                        return hits
                     if response.status_code in (429, 202):
                         await asyncio.sleep(1.0 * attempt)
                         continue
@@ -72,9 +103,19 @@ class DuckDuckGoProvider(SearchProvider):
     def _parse(html: str, num_results: int) -> List[SearchHit]:
         soup = BeautifulSoup(html, "lxml")
         hits: List[SearchHit] = []
-        for anchor in soup.select("a.result__a"):
-            url = anchor.get("href")
-            if not url:
+        anchors = soup.select("a.result__a")
+        if not anchors:
+            # DuckDuckGo has changed this markup before; fall back to any
+            # outbound link that isn't DuckDuckGo's own chrome so a purely
+            # cosmetic markup change doesn't silently zero out every search.
+            anchors = [
+                a
+                for a in soup.select("div.results a[href]")
+                if "duckduckgo.com" not in (a.get("href") or "") or "/l/?" in (a.get("href") or "")
+            ]
+        for anchor in anchors:
+            resolved = _resolve_result_url(anchor.get("href"))
+            if not resolved or not resolved.startswith("http"):
                 continue
             title = anchor.get_text(strip=True)
             snippet_tag = anchor.find_parent("div", class_="result")
@@ -83,7 +124,7 @@ class DuckDuckGoProvider(SearchProvider):
                 snippet_el = snippet_tag.select_one(".result__snippet")
                 if snippet_el:
                     snippet = snippet_el.get_text(strip=True)
-            hits.append(SearchHit(url=url, title=title, snippet=snippet))
+            hits.append(SearchHit(url=resolved, title=title, snippet=snippet))
             if len(hits) >= num_results:
                 break
         return hits
