@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Real-Time Property Finder</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <h1>Real-Time Property Finder</h1>
+      <p>Search the web for currently available residential properties matching your requirements.</p>
+    </header>
+
+    <section class="search-card" id="search-card">
+      <form id="search-form" novalidate>
+        <div class="field field-wide">
+          <label for="area">Area / Locality</label>
+          <input
+            type="text"
+            id="area"
+            name="area"
+            placeholder="e.g. Adyar, Whitefield, Koramangala..."
+            autocomplete="off"
+            list="area-suggestions"
+            required
+          />
+          <datalist id="area-suggestions">
+            <option value="Adyar"></option>
+            <option value="Teynampet"></option>
+            <option value="Anna Nagar"></option>
+            <option value="Velachery"></option>
+            <option value="Mylapore"></option>
+            <option value="Whitefield"></option>
+            <option value="Koramangala"></option>
+            <option value="Indiranagar"></option>
+          </datalist>
+        </div>
+
+        <div class="field">
+          <label for="property_type">Property type</label>
+          <select id="property_type" name="property_type">
+            <option value="any">Any</option>
+            <option value="apartment">Apartment</option>
+            <option value="independent_house">Independent house</option>
+            <option value="villa">Villa</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="bhk">BHK</label>
+          <select id="bhk" name="bhk">
+            <option value="any">Any</option>
+            <option value="1">1 BHK</option>
+            <option value="2">2 BHK</option>
+            <option value="3">3 BHK</option>
+            <option value="4+">4+ BHK</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="min_rent">Minimum rent (₹/month)</label>
+          <input type="number" id="min_rent" name="min_rent" min="0" step="500" placeholder="No minimum" />
+        </div>
+
+        <div class="field">
+          <label for="max_rent">Maximum rent (₹/month)</label>
+          <input type="number" id="max_rent" name="max_rent" min="0" step="500" placeholder="No maximum" />
+        </div>
+
+        <div class="field">
+          <label for="furnishing">Furnishing</label>
+          <select id="furnishing" name="furnishing">
+            <option value="any">Any</option>
+            <option value="unfurnished">Unfurnished</option>
+            <option value="semi_furnished">Semi-furnished</option>
+            <option value="fully_furnished">Fully furnished</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="parking">Parking</label>
+          <select id="parking" name="parking">
+            <option value="any">Any</option>
+            <option value="covered">Covered car parking</option>
+            <option value="open">Open car parking</option>
+            <option value="none">No parking required</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="lift">Lift</label>
+          <select id="lift" name="lift">
+            <option value="any">Any</option>
+            <option value="required">Required</option>
+            <option value="not_required">Not required</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="water">Water supply</label>
+          <select id="water" name="water">
+            <option value="any">Any</option>
+            <option value="preferred">Reliable water supply preferred</option>
+            <option value="required">Reliable water supply required</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="brokerage">Brokerage</label>
+          <select id="brokerage" name="brokerage">
+            <option value="any">Any</option>
+            <option value="preferred">Owner / No brokerage preferred</option>
+            <option value="only">Owner / No brokerage only</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="food_preference">Food preference</label>
+          <select id="food_preference" name="food_preference">
+            <option value="any">Any</option>
+            <option value="vegetarian">Vegetarian</option>
+            <option value="non_vegetarian">Non-Vegetarian</option>
+          </select>
+        </div>
+
+        <div class="field field-wide field-submit">
+          <button type="submit" id="search-button">Search Live Properties</button>
+          <p class="field-error" id="form-error" hidden></p>
+        </div>
+      </form>
+    </section>
+
+    <section class="progress-card" id="progress-card" hidden>
+      <h2>Searching live property sources...</h2>
+      <ul class="progress-steps" id="progress-steps">
+        <li data-step="queries"><span class="marker">○</span> Generating search queries</li>
+        <li data-step="search"><span class="marker">○</span> Searching public web results</li>
+        <li data-step="check"><span class="marker">○</span> Checking property listings</li>
+        <li data-step="normalize"><span class="marker">○</span> Normalizing property data</li>
+        <li data-step="dedupe"><span class="marker">○</span> Removing duplicates</li>
+        <li data-step="rank"><span class="marker">○</span> Ranking matches</li>
+      </ul>
+    </section>
+
+    <section class="results-section" id="results-section" hidden>
+      <div class="summary-card" id="summary-card"></div>
+      <div class="sources-panel" id="sources-panel"></div>
+
+      <div class="results-toolbar" id="results-toolbar" hidden>
+        <label for="sort-select">Sort by</label>
+        <select id="sort-select">
+          <option value="best_match">Best Match</option>
+          <option value="lowest_rent">Lowest Rent</option>
+          <option value="highest_bhk">Highest BHK</option>
+          <option value="location">Closest Location Relevance</option>
+          <option value="recent">Recently Updated</option>
+          <option value="owner">Owner / No Brokerage</option>
+          <option value="complete">Most Complete Information</option>
+        </select>
+      </div>
+
+      <div class="results-grid" id="results-grid"></div>
+
+      <div class="no-results" id="no-results" hidden>
+        <p class="no-results-title">No matching properties were found in the current live search.</p>
+        <p>Suggestions:</p>
+        <ul id="no-results-suggestions"></ul>
+      </div>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
