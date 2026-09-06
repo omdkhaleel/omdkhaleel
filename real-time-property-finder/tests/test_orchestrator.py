@@ -28,15 +28,21 @@ class FakeProvider(SearchProvider):
 
 
 class FakeAdapter:
-    def __init__(self, record_factory=None):
+    def __init__(self, record_factory=None, fail_urls=None, exclude_urls=None):
         self.record_factory = record_factory
+        self.fail_urls = fail_urls or set()
+        self.exclude_urls = exclude_urls or set()
         self.fetch_calls = []
 
     async def fetch(self, url, client):
         self.fetch_calls.append(url)
+        if url in self.fail_urls:
+            return FetchOutcome(403, None)
         return FetchOutcome(200, "<html>fake</html>")
 
     def extract(self, url, html):
+        if url in self.exclude_urls:
+            return None
         if self.record_factory is None:
             return None
         return self.record_factory(url)
@@ -125,3 +131,31 @@ async def test_location_not_hard_coded_in_live_run(monkeypatch):
 
     assert all("velachery" not in q.lower() and "adyar" not in q.lower() for q in seen_queries)
     assert any("koramangala" in q.lower() for q in seen_queries)
+
+
+@pytest.mark.asyncio
+async def test_fetch_and_extract_breakdown_counts_each_outcome_separately(monkeypatch):
+    """Discovering candidate URLs and turning them into usable records are
+    different pipeline stages with different failure modes (network fetch
+    vs. extraction exclusion) - the stats must distinguish them instead of
+    collapsing everything into one "found nothing" number."""
+    ok_url = "https://housing.com/ok"
+    failed_url = "https://housing.com/fails"
+    excluded_url = "https://housing.com/pg"
+
+    provider = FakeProvider(hits_by_query={"housing.com": [
+        SearchHit(url=ok_url), SearchHit(url=failed_url), SearchHit(url=excluded_url),
+    ]})
+    adapter = FakeAdapter(
+        record_factory=make_good_record,
+        fail_urls={failed_url},
+        exclude_urls={excluded_url},
+    )
+    monkeypatch.setattr("app.orchestrator.adapter_for_url", lambda url: adapter)
+
+    orchestrator = SearchOrchestrator(provider=provider)
+    response = await orchestrator.run(SearchRequest(area="Adyar"))
+
+    assert response.statistics.listings_discovered == 3
+    assert len(response.results) == 1
+    assert response.results[0].listing_url == ok_url

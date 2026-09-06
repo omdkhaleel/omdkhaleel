@@ -43,19 +43,39 @@ and opens your browser at whichever one it actually started on.
 
 ## 5. Optional configuration / API keys
 
-None are required — the default search provider (DuckDuckGo's public
-results page) needs no key at all.
-
-If you'd rather use the Bing Web Search API, copy `.env.example` to `.env`
-in the project root and set:
+None are required to start — the default search provider (DuckDuckGo's
+public results page) needs no key at all. **However**, DuckDuckGo can
+rate-limit or bot-check any automated client at its own discretion, on
+any network, at any time — that shows up as every search finding zero
+results even with a perfectly working internet connection. This isn't
+something the app is allowed to work around (see §9's note on
+responsible access), so if it happens consistently for you, switch to
+an API-based provider instead: copy `.env.example` to `.env` in the
+project root and set one of:
 
 ```
+# Azure "Bing Search v7" - https://portal.azure.com
 SEARCH_PROVIDER=bing
+SEARCH_PROVIDER_API_KEY=your-key-here
+```
+
+```
+# Brave Search API (has a free tier) - https://api.search.brave.com/app/keys
+SEARCH_PROVIDER=brave
 SEARCH_PROVIDER_API_KEY=your-key-here
 ```
 
 Any key you set here stays on the backend — it is never sent to, or
 readable from, the browser.
+
+**Diagnosing a zero-result search:** every search writes a full,
+unfiltered log to `search_debug.log` in this project's root folder (in
+addition to the console). For each query it logs exactly one line
+saying what happened — a hit count, an HTTP error, or, if DuckDuckGo
+served a bot-check/CAPTCHA page instead of results, an explicit line
+saying so. That file is more reliable to share when troubleshooting
+than copying text out of a terminal window, which can silently drop or
+wrap lines.
 
 ## 6. Internet requirement
 
