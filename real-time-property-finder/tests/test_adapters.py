@@ -22,12 +22,32 @@ SAMPLE_HTML = """
 """
 
 PG_HTML = """
-<html><head><title>PG for rent in Adyar</title></head>
+<html><head><title>Paying Guest Accommodation for Rent in Adyar</title>
+<meta property="og:description" content="Paying guest accommodation with shared room, rent 8000 per month." />
+</head>
 <body><p>Paying guest accommodation, shared room, rent 8000 per month.</p></body></html>
 """
 
 BLOCKED_HTML = """
 <html><body><h1>Access Denied</h1><p>Please complete the CAPTCHA to continue.</p></body></html>
+"""
+
+# A genuine apartment listing whose own title/description are perfectly
+# normal, but whose page also carries the kind of unrelated cross-sell
+# navigation ("PG in Adyar", "Commercial Property") that real Indian
+# property portals stuff onto nearly every listing page. This must NOT
+# be excluded - only the page's own declared subject should count.
+REAL_LISTING_WITH_UNRELATED_NAV_HTML = """
+<html><head>
+  <title>2 BHK Apartment for Rent in Adyar, Chennai for Rs 27000</title>
+  <meta property="og:description" content="2 BHK apartment for rent in Adyar, Chennai. Owner property, no brokerage." />
+</head>
+<body>
+  <nav>Browse: Flats for Rent | PG in Adyar | Commercial Property | Roommates near Adyar</nav>
+  <p>Rent: 27000. Deposit: 100000. Size: 900 sqft. Covered parking available. Owner listed, no brokerage.</p>
+  <div class="related-searches">Related: PG in Adyar, Hostel in Adyar, Commercial Property in Chennai</div>
+</body>
+</html>
 """
 
 
@@ -62,6 +82,17 @@ def test_pg_listing_is_excluded():
     adapter = HousingAdapter()
     record = adapter.extract("https://housing.com/pg/1", PG_HTML)
     assert record is None
+
+
+def test_real_listing_not_excluded_by_unrelated_nav_mentioning_pg():
+    """Regression test for a real bug: a genuine 2 BHK listing was being
+    dropped as "PG/shared" purely because unrelated nav/related-searches
+    links elsewhere on the page mentioned PG and Commercial Property."""
+    adapter = HousingAdapter()
+    record = adapter.extract("https://housing.com/listing/real-1", REAL_LISTING_WITH_UNRELATED_NAV_HTML)
+    assert record is not None
+    assert record.monthly_rent == 27000
+    assert record.bhk == "2"
 
 
 def test_blocked_page_is_not_extracted():

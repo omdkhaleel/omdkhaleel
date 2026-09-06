@@ -201,7 +201,11 @@ def detect_property_type(text: str) -> Optional[str]:
 
 def is_pg_or_shared(text: str) -> bool:
     lowered = text.lower()
-    keywords = ["paying guest", " pg ", "pg for", "hostel", "shared room", "shared accommodation"]
+    # Deliberately no bare "pg" token: a two-letter abbreviation is too
+    # likely to appear in unrelated portal cross-sell text ("Flats, PG,
+    # Commercial for rent in ...") even within a title/description, so
+    # only unambiguous multi-word phrases are treated as PG signals.
+    keywords = ["paying guest", "pg for boys", "pg for girls", "pg accommodation", "hostel", "shared room", "shared accommodation"]
     if any(k in f" {lowered} " for k in keywords):
         if "co-living" in lowered and "private" in lowered and "shared" not in lowered:
             return False
