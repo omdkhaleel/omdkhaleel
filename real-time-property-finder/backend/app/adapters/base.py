@@ -84,7 +84,11 @@ class GenericExtractionMixin:
 
         text = ex.visible_text(soup)
 
-        if ex.is_pg_or_shared(text) or ex.is_commercial(text):
+        if ex.is_pg_or_shared(text):
+            logger.info("Excluded (looks like PG/shared/hostel, not independent rental): %s", url)
+            return None
+        if ex.is_commercial(text):
+            logger.info("Excluded (looks like a commercial listing): %s", url)
             return None
 
         json_ld = ex.extract_json_ld(soup)

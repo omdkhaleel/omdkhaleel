@@ -90,9 +90,17 @@ class SearchOrchestrator:
         urls = list(candidate_urls.values())[: config.MAX_RESULTS_PER_SOURCE * 4]
         log_candidate_urls(len(urls))
 
-        fetched_records = await self._fetch_and_extract(urls, source_stats)
-        log_fetched(len(fetched_records))
+        fetch_stats, fetched_records = await self._fetch_and_extract(urls, source_stats)
+        log_fetched(fetch_stats["fetch_ok"])
         log_normalized(len(fetched_records))
+        logger.info(
+            "Fetch/extract breakdown: %d attempted, %d fetch failed, %d excluded during "
+            "extraction (blocked page/PG/commercial/error), %d became usable records",
+            len(urls),
+            fetch_stats["fetch_failed"],
+            fetch_stats["excluded"],
+            len(fetched_records),
+        )
 
         for stat in source_stats.values():
             if stat.queries_attempted == 0:
@@ -134,24 +142,29 @@ class SearchOrchestrator:
 
     async def _fetch_and_extract(
         self, urls: List[str], source_stats: Dict[str, SourceStatus]
-    ) -> List[PropertyRecord]:
+    ) -> tuple[Dict[str, int], List[PropertyRecord]]:
         semaphore = asyncio.Semaphore(config.MAX_CONCURRENT_FETCHES)
         records: List[PropertyRecord] = []
+        stats = {"fetch_ok": 0, "fetch_failed": 0, "excluded": 0}
 
         async def handle(client: httpx.AsyncClient, url: str) -> None:
             adapter = adapter_for_url(url)
             async with semaphore:
                 outcome = await adapter.fetch(url, client)
             if not outcome.ok:
+                stats["fetch_failed"] += 1
                 logger.info("Could not fetch %s (%s)", url, outcome.error or outcome.status_code)
                 return
+            stats["fetch_ok"] += 1
             try:
                 record = adapter.extract(url, outcome.html)
             except Exception as exc:
                 # A single malformed page must never take down the whole search.
+                stats["excluded"] += 1
                 logger.warning("Extraction failed for %s: %s", url, exc)
                 return
             if record is None:
+                stats["excluded"] += 1
                 return
             records.append(record)
             label = _label_for_url(url)
@@ -160,7 +173,7 @@ class SearchOrchestrator:
 
         async with httpx.AsyncClient(timeout=config.REQUEST_TIMEOUT_SECONDS) as client:
             await asyncio.gather(*(handle(client, u) for u in urls))
-        return records
+        return stats, records
 
     @staticmethod
     def _suggestions(req: SearchRequest) -> List[str]:
