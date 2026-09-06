@@ -16,8 +16,8 @@ from urllib.parse import parse_qs, unquote, urlencode, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .. import config
-from ..logging_config import logger
+from .. import config, extraction_utils as ex
+from ..logging_config import log_provider_query_outcome
 from .base import SearchHit, SearchProvider
 
 _ENDPOINT = "https://html.duckduckgo.com/html/"
@@ -64,7 +64,11 @@ class DuckDuckGoProvider(SearchProvider):
 
     async def search(self, query: str, num_results: int) -> List[SearchHit]:
         await self._throttle()
-        headers = {"User-Agent": config.USER_AGENT}
+        headers = {
+            "User-Agent": config.USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+        }
         params = {"q": query}
         attempts = 2
         async with self._semaphore:
@@ -78,24 +82,35 @@ class DuckDuckGoProvider(SearchProvider):
                         )
                     if response.status_code == 200:
                         hits = self._parse(response.text, num_results)
-                        if not hits:
-                            logger.info(
-                                "DuckDuckGo returned 200 but no parseable results for query %r "
-                                "(page may be a bot-check interstitial or markup has changed)",
+                        if hits:
+                            log_provider_query_outcome(query, f"{len(hits)} result(s)")
+                        elif ex.looks_blocked(response.status_code, response.text):
+                            log_provider_query_outcome(
                                 query,
+                                "0 results - DuckDuckGo served a bot-check/CAPTCHA page "
+                                "instead of results (this is DuckDuckGo blocking this "
+                                "IP/client, not a code bug; the app will not try to bypass it)",
+                            )
+                        else:
+                            snippet = ex.visible_text(BeautifulSoup(response.text, "lxml"))[:200]
+                            log_provider_query_outcome(
+                                query,
+                                f"0 results - page loaded but no result links found; "
+                                f"page text started with: {snippet!r}",
                             )
                         return hits
                     if response.status_code in (429, 202):
+                        log_provider_query_outcome(
+                            query, f"HTTP {response.status_code} (rate-limited), retrying"
+                        )
                         await asyncio.sleep(1.0 * attempt)
                         continue
-                    logger.warning(
-                        "DuckDuckGo search returned status %s for query %r",
-                        response.status_code,
-                        query,
-                    )
+                    log_provider_query_outcome(query, f"HTTP {response.status_code}, giving up")
                     return []
                 except httpx.HTTPError as exc:
-                    logger.warning("DuckDuckGo search failed (attempt %d): %s", attempt, exc)
+                    log_provider_query_outcome(
+                        query, f"network error on attempt {attempt}: {exc!r}"
+                    )
                     await asyncio.sleep(0.5 * attempt)
             return []
 
